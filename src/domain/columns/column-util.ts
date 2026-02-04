@@ -12,6 +12,11 @@ export class ColumnUtils implements MessageSubscriber {
 	private connectedColumn?: number;
 	private lastColumn?: number;
 
+	// Per-column active feedback subscriptions
+	private columnSelectedSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
+	private columnConnectedSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
+	private columnNameSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
+
 	constructor(resolumeArenaInstance: ResolumeArenaModuleInstance) {
 		this.resolumeArenaInstance = resolumeArenaInstance;
 		this.resolumeArenaInstance.log('debug', 'ColumnUtils constructor called');
@@ -25,36 +30,47 @@ export class ColumnUtils implements MessageSubscriber {
 			}
 		}
 		if (data.path) {
-			if (!!data.path.match(/\/composition\/columns\/\d+\/name/)) {
-				this.resolumeArenaInstance.checkFeedbacks('columnName');
+			let matchName = data.path.match(/\/composition\/columns\/(\d+)\/name/);
+			if (matchName) {
+				const column = matchName[1];
+				if (this.columnNameSubscriptions.has(column)) {
+					this.resolumeArenaInstance.markFeedbackDirty('columnName');
+				}
 			}
-			if (!!data.path.match(/\/composition\/columns\/\d+\/connect/)) {
+
+			let matchConnect = data.path.match(/\/composition\/columns\/(\d+)\/connect/);
+			if (matchConnect) {
+				const column = matchConnect[1];
 				if (data.value) {
 					let match = data.path.match(/\/composition\/columns\/(\d+)\/connect/)[1];
 					if (!match) {
 						this.connectedColumn = match;
-					}else {
+					} else {
 						this.connectedColumn = this.selectedColumn;
 					}
-						this.resolumeArenaInstance.setVariableValues({connectedColumn: this.connectedColumn});
+					this.resolumeArenaInstance.setVariableValues({connectedColumn: this.connectedColumn});
 				}
 
-				this.resolumeArenaInstance.checkFeedbacks('columnConnected');
-				this.resolumeArenaInstance.checkFeedbacks('connectedColumnName');
-				this.resolumeArenaInstance.checkFeedbacks('nextConnectedColumnName');
-				this.resolumeArenaInstance.checkFeedbacks('previousConnectedColumnName');
+				if (this.columnConnectedSubscriptions.has(column)) {
+					this.resolumeArenaInstance.markFeedbackDirty('columnConnected');
+				}
+				// These summary name feedbacks are global; keep updating them when any connect changes
+				this.resolumeArenaInstance.markFeedbackDirty('connectedColumnName', 'nextConnectedColumnName', 'previousConnectedColumnName');
 			}
 
-			if (!!data.path.match(/\/composition\/columns\/\d+\/select/)) {
+			let matchSelect = data.path.match(/\/composition\/columns\/(\d+)\/select/);
+			if (matchSelect) {
+				const column = matchSelect[1];
 				if (data.value) {
-					this.selectedColumn = data.path.match(/\/composition\/columns\/(\d+)\/select/)[1];
+					this.selectedColumn = column;
 					this.resolumeArenaInstance.setVariableValues({selectedColumn: this.selectedColumn});
 				}
 
-				this.resolumeArenaInstance.checkFeedbacks('columnSelected');
-				this.resolumeArenaInstance.checkFeedbacks('selectedColumnName');
-				this.resolumeArenaInstance.checkFeedbacks('nextSelectedColumnName');
-				this.resolumeArenaInstance.checkFeedbacks('previousSelectedColumnName');
+				if (this.columnSelectedSubscriptions.has(column)) {
+					this.resolumeArenaInstance.markFeedbackDirty('columnSelected');
+				}
+				// Global selected name feedbacks
+				this.resolumeArenaInstance.markFeedbackDirty('selectedColumnName', 'nextSelectedColumnName', 'previousSelectedColumnName');
 			}
 		}
 	}
@@ -65,13 +81,21 @@ export class ColumnUtils implements MessageSubscriber {
 			this.selectedColumn = undefined;
 			for (const [columnIndex, columnObject] of columns.entries()) {
 				const column = columnIndex + 1;
+				// Always unsubscribe to avoid stale subscriptions
 				this.resolumeArenaInstance.getWebsocketApi()?.unsubscribePath('/composition/columns/' + column + '/select');
 				this.resolumeArenaInstance.getWebsocketApi()?.unsubscribePath('/composition/columns/' + column + '/connect');
 				this.resolumeArenaInstance.getWebsocketApi()?.unsubscribePath('/composition/columns/' + column + '/name');
 
-				this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/select');
-				this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/connect');
-				this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/name');
+				// Subscribe to individual paths only if there's an active feedback subscription for that column
+				if (this.columnSelectedSubscriptions.has(column.toString())) {
+					this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/select');
+				}
+				if (this.columnConnectedSubscriptions.has(column.toString())) {
+					this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/connect');
+				}
+				if (this.columnNameSubscriptions.has(column.toString())) {
+					this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/name');
+				}
 				if (columnObject.selected?.value) {
 					this.selectedColumn = column;
 				}
@@ -81,15 +105,17 @@ export class ColumnUtils implements MessageSubscriber {
 				this.lastColumn = column;
 			}
 		}
-		this.resolumeArenaInstance.checkFeedbacks('columnConnected');
-		this.resolumeArenaInstance.checkFeedbacks('columnSelected');
-		this.resolumeArenaInstance.checkFeedbacks('columnName');
-		this.resolumeArenaInstance.checkFeedbacks('selectedColumnName');
-		this.resolumeArenaInstance.checkFeedbacks('connectedColumnName');
-		this.resolumeArenaInstance.checkFeedbacks('nextSelectedColumnName');
-		this.resolumeArenaInstance.checkFeedbacks('nextConnectedColumnName');
-		this.resolumeArenaInstance.checkFeedbacks('previousSelectedColumnName');
-		this.resolumeArenaInstance.checkFeedbacks('previousConnectedColumnName');
+		// Only mark feedbacks dirty if there are active subscribers
+		if (this.columnConnectedSubscriptions.size > 0) {
+			this.resolumeArenaInstance.markFeedbackDirty('columnConnected');
+		}
+		if (this.columnSelectedSubscriptions.size > 0) {
+			this.resolumeArenaInstance.markFeedbackDirty('columnSelected');
+		}
+		if (this.columnNameSubscriptions.size > 0) {
+			this.resolumeArenaInstance.markFeedbackDirty('columnName');
+		}
+		this.resolumeArenaInstance.markFeedbackDirty('selectedColumnName', 'nextSelectedColumnName', 'previousSelectedColumnName', 'connectedColumnName', 'nextConnectedColumnName', 'previousConnectedColumnName');
 	}
 
 	/////////////////////////////////////////////////
@@ -105,6 +131,33 @@ export class ColumnUtils implements MessageSubscriber {
 		return {};
 	}
 
+	async columnNameFeedbackSubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (column !== undefined) {
+			const id = column.toString();
+			if (!this.columnNameSubscriptions.get(id)) {
+				this.columnNameSubscriptions.set(id, new Set());
+				this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/name');
+			}
+			this.columnNameSubscriptions.get(id)?.add(feedback.id);
+		}
+	}
+
+	async columnNameFeedbackUnsubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (column !== undefined) {
+			const id = column.toString();
+			const subs = this.columnNameSubscriptions.get(id);
+			if (subs) {
+				subs.delete(feedback.id);
+				if (subs.size === 0) {
+					this.resolumeArenaInstance.getWebsocketApi()?.unsubscribePath('/composition/columns/' + column + '/name');
+					this.columnNameSubscriptions.delete(id);
+				}
+			}
+		}
+	}
+
 	/////////////////////////////////////////////////
 	// SELECTED
 	/////////////////////////////////////////////////
@@ -115,6 +168,33 @@ export class ColumnUtils implements MessageSubscriber {
 			return parameterStates.get()['/composition/columns/' + column + '/select']?.value;
 		}
 		return false;
+	}
+
+	async columnSelectedFeedbackSubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (column !== undefined) {
+			const id = column.toString();
+			if (!this.columnSelectedSubscriptions.get(id)) {
+				this.columnSelectedSubscriptions.set(id, new Set());
+				this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/select');
+			}
+			this.columnSelectedSubscriptions.get(id)?.add(feedback.id);
+		}
+	}
+
+	async columnSelectedFeedbackUnsubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (column !== undefined) {
+			const id = column.toString();
+			const subs = this.columnSelectedSubscriptions.get(id);
+			if (subs) {
+				subs.delete(feedback.id);
+				if (subs.size === 0) {
+					this.resolumeArenaInstance.getWebsocketApi()?.unsubscribePath('/composition/columns/' + column + '/select');
+					this.columnSelectedSubscriptions.delete(id);
+				}
+			}
+		}
 	}
 
 	/////////////////////////////////////////////////
@@ -198,6 +278,33 @@ export class ColumnUtils implements MessageSubscriber {
 			return parameterStates.get()['/composition/columns/' + column + '/connect']?.value === 'Connected';
 		}
 		return false;
+	}
+
+	async columnConnectedFeedbackSubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (column !== undefined) {
+			const id = column.toString();
+			if (!this.columnConnectedSubscriptions.get(id)) {
+				this.columnConnectedSubscriptions.set(id, new Set());
+				this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/columns/' + column + '/connect');
+			}
+			this.columnConnectedSubscriptions.get(id)?.add(feedback.id);
+		}
+	}
+
+	async columnConnectedFeedbackUnsubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (column !== undefined) {
+			const id = column.toString();
+			const subs = this.columnConnectedSubscriptions.get(id);
+			if (subs) {
+				subs.delete(feedback.id);
+				if (subs.size === 0) {
+					this.resolumeArenaInstance.getWebsocketApi()?.unsubscribePath('/composition/columns/' + column + '/connect');
+					this.columnConnectedSubscriptions.delete(id);
+				}
+			}
+		}
 	}
 
 

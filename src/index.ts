@@ -29,6 +29,9 @@ export class ResolumeArenaModuleInstance extends InstanceBase<ResolumeArenaConfi
 	private compositionUtils: CompositionUtils;
 	private deckUtils: DeckUtils;
 	private websocketSubscribers: Set<MessageSubscriber> = new Set();
+	// Debounced feedback update batching
+	private dirtyFeedbacks: Set<string> = new Set<string>();
+	private feedbackFlushTimer: any = null;
 
 	constructor(internal: unknown) {
 		super(internal);
@@ -165,6 +168,26 @@ export class ResolumeArenaModuleInstance extends InstanceBase<ResolumeArenaConfi
 
 	getWebsocketApi(): WebsocketApi | null {
 		return this.websocketApi;
+	}
+
+	/**
+	 * Mark feedback keys as dirty and schedule a debounced flush to call checkFeedbacks
+	 * This coalesces many rapid updates into a single check. Delay is small to keep UI responsive.
+	 */
+	public markFeedbackDirty(...keys: string[]) {
+		for (const k of keys) {
+			this.dirtyFeedbacks.add(k);
+		}
+		if (!this.feedbackFlushTimer) {
+			this.feedbackFlushTimer = setTimeout(() => {
+				const keysToFlush = Array.from(this.dirtyFeedbacks);
+				this.dirtyFeedbacks.clear();
+				this.feedbackFlushTimer = null;
+				if (keysToFlush.length > 0) {
+					this.checkFeedbacks(...keysToFlush);
+				}
+			}, 50);
+		}
 	}
 
 	getOscApi(): ArenaOscApi | null {

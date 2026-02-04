@@ -6,5 +6,7 @@ export function columnName(resolumeArenaInstance: ResolumeArenaModuleInstance): 
 	type: 'advanced',
 	name: 'Column Name',
 	options: [...getColumnOption()],
-	callback: resolumeArenaInstance.getColumnUtils()!.columnNameFeedbackCallback.bind(resolumeArenaInstance.getColumnUtils()!)
+	callback: resolumeArenaInstance.getColumnUtils()!.columnNameFeedbackCallback.bind(resolumeArenaInstance.getColumnUtils()!),
+	subscribe: resolumeArenaInstance.getColumnUtils()!.columnNameFeedbackSubscribe.bind(resolumeArenaInstance.getColumnUtils()!),
+	unsubscribe: resolumeArenaInstance.getColumnUtils()!.columnNameFeedbackUnsubscribe.bind(resolumeArenaInstance.getColumnUtils()!)
 }}

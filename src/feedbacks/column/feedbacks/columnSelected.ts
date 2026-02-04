@@ -8,6 +8,8 @@ export function columnSelected(resolumeArenaInstance: ResolumeArenaModuleInstanc
 		name: 'Column Selected',
 		defaultStyle: getDefaultStyleGreen(),
 		options: [...getColumnOption()],
-		callback: resolumeArenaInstance.getColumnUtils()!.columnSelectedFeedbackCallback.bind(resolumeArenaInstance.getColumnUtils()!)
+		callback: resolumeArenaInstance.getColumnUtils()!.columnSelectedFeedbackCallback.bind(resolumeArenaInstance.getColumnUtils()!),
+		subscribe: resolumeArenaInstance.getColumnUtils()!.columnSelectedFeedbackSubscribe.bind(resolumeArenaInstance.getColumnUtils()!),
+		unsubscribe: resolumeArenaInstance.getColumnUtils()!.columnSelectedFeedbackUnsubscribe.bind(resolumeArenaInstance.getColumnUtils()!)
 	};
 }

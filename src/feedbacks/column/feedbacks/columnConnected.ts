@@ -8,6 +8,8 @@ export function columnConnected(resolumeArenaInstance: ResolumeArenaModuleInstan
 		name: 'Column Connected',
 		defaultStyle: getDefaultStyleCyan(),
 		options: [...getColumnOption()],
-		callback: resolumeArenaInstance.getColumnUtils()!.columnConnectedFeedbackCallback.bind(resolumeArenaInstance.getColumnUtils()!)
+		callback: resolumeArenaInstance.getColumnUtils()!.columnConnectedFeedbackCallback.bind(resolumeArenaInstance.getColumnUtils()!),
+		subscribe: resolumeArenaInstance.getColumnUtils()!.columnConnectedFeedbackSubscribe.bind(resolumeArenaInstance.getColumnUtils()!),
+		unsubscribe: resolumeArenaInstance.getColumnUtils()!.columnConnectedFeedbackUnsubscribe.bind(resolumeArenaInstance.getColumnUtils()!)
 	};
 }

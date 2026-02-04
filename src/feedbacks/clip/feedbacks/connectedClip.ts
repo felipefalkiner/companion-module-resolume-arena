@@ -36,6 +36,8 @@ export function connectedClip(resolumeArenaInstance: ResolumeArenaModuleInstance
 				returnType: 'number'
 			}
 		],
-		callback: resolumeArenaInstance.getClipUtils()!.clipConnectedFeedbackCallback.bind(resolumeArenaInstance.getClipUtils()!)
+		callback: resolumeArenaInstance.getClipUtils()!.clipConnectedFeedbackCallback.bind(resolumeArenaInstance.getClipUtils()!),
+		subscribe: resolumeArenaInstance.getClipUtils()!.clipConnectedFeedbackSubscribe.bind(resolumeArenaInstance.getClipUtils()!),
+		unsubscribe: resolumeArenaInstance.getClipUtils()!.clipConnectedFeedbackUnsubscribe.bind(resolumeArenaInstance.getClipUtils()!)
 	};
 }

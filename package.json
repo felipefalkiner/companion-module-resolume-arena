@@ -1,8 +1,8 @@
 {
-	"name": "resolume-arena",
+	"name": "resolume-arena-falk",
 	"main": "dist/index.js",
-	"version": "3.12.0",
-	"description": "Resolume Arena 6 & 7 module for companion",
+	"version": "3.12.0-falk",
+	"description": "Resolume Arena 6 & 7 module for companion (dev - falk)",
 	"api_version": "1.0.0",
 	"keywords": [
 		"Video",

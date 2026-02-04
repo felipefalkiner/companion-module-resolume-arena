@@ -8,6 +8,8 @@ export function selectedClip(resolumeArenaInstance: ResolumeArenaModuleInstance)
 		name: 'Selected Clip',
 		options: [...getLayerOption(), ...getColumnOption()],
 		defaultStyle: getDefaultStyleBlue(),
-		callback: resolumeArenaInstance.getClipUtils()!.clipSelectedFeedbackCallback.bind(resolumeArenaInstance.getClipUtils()!)
+		callback: resolumeArenaInstance.getClipUtils()!.clipSelectedFeedbackCallback.bind(resolumeArenaInstance.getClipUtils()!),
+		subscribe: resolumeArenaInstance.getClipUtils()!.clipSelectedFeedbackSubscribe.bind(resolumeArenaInstance.getClipUtils()!),
+		unsubscribe: resolumeArenaInstance.getClipUtils()!.clipSelectedFeedbackUnsubscribe.bind(resolumeArenaInstance.getClipUtils()!)
 	}
 }

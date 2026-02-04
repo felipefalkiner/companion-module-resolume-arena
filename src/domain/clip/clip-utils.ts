@@ -17,12 +17,17 @@ export class ClipUtils implements MessageSubscriber {
 	private initalLoadDone = false;
 
 	private clipDetailsSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
+	private clipSelectedSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
 	private clipOpacitySubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
 	private clipVolumeSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
 	private clipSpeedSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
 	private clipSpeedIds: Set<number> = new Set<number>();
 	private clipVolumeIds: Set<number> = new Set<number>();
 	private clipOpacityIds: Set<number> = new Set<number>();
+
+	// Track subscriptions for connected state per clip. Only subscribe websocket paths when there is at least one active feedback subscription for the clip.
+	private clipConnectedSubscriptions: Map<string, Set<string>> = new Map<string, Set<string>>();
+
 
 	constructor(resolumeArenaInstance: ResolumeArenaModuleInstance) {
 		this.resolumeArenaInstance = resolumeArenaInstance;
@@ -41,16 +46,28 @@ export class ClipUtils implements MessageSubscriber {
 			this.updateLayerOpacities();
 		}
 		if (data.path) {
-			if (!!data.path.match(/\/composition\/layers\/\d+\/clips\/\d+\/connect/)) {
-				this.resolumeArenaInstance.checkFeedbacks('connectedClip');
+			let matchConnect = data.path.match(/\/composition\/layers\/(\d+)\/clips\/(\d+)\/connect/);
+			if (matchConnect) {
+				let layer = +matchConnect[1];
+				let column = +matchConnect[2];
+				let idString = new ClipId(layer, column).getIdString();
+				// Only mark connectedClip as dirty if we actually have subscriptions for this clip
+				if (this.clipConnectedSubscriptions.has(idString)) {
+					this.resolumeArenaInstance.markFeedbackDirty('connectedClip');
+				}
 			}
-			if (!!data.path.match(/\/composition\/layers\/\d+\/clips\/\d+\/select/)) {
-				this.resolumeArenaInstance.checkFeedbacks('selectedClip');
-				this.resolumeArenaInstance.checkFeedbacks('connectedClip');
+			let matchSelect = data.path.match(/\/composition\/layers\/(\d+)\/clips\/(\d+)\/select/);
+			if (matchSelect) {
+				let layer = +matchSelect[1];
+				let column = +matchSelect[2];
+				let idString = new ClipId(layer, column).getIdString();
+				if (this.clipSelectedSubscriptions.has(idString)) {
+					this.resolumeArenaInstance.markFeedbackDirty('selectedClip');
+				}
+				if (this.clipConnectedSubscriptions.has(idString)) {
+					this.resolumeArenaInstance.markFeedbackDirty('connectedClip');
+				}
 				if (data.value === true) {
-					let match = data.path.match(/\/composition\/layers\/(\d+)\/clips\/(\d+)\/select/)!;
-					let layer = match[1];
-					let column = match[2];
 					this.resolumeArenaInstance.setVariableValues({selectedClip: JSON.stringify({layer, column})});
 					this.resolumeArenaInstance.setVariableValues({selectedClipLayer: layer});
 					this.resolumeArenaInstance.setVariableValues({selectedClipColumn: column});
@@ -89,16 +106,20 @@ export class ClipUtils implements MessageSubscriber {
 				if (clips) {
 					for (const [clip, clipObject] of clips.entries()) {
 						const clipId = new ClipId(layer + 1, clip + 1);
+						// Ensure we aren't left subscribed from a previous composition state
 						this.clipConnectedWebsocketUnsubscribe(clipId.getLayer(), clipId.getColumn());
 						this.clipTransportPositionWebsocketUnsubscribe(clipObject.transport?.position?.id);
 
-						this.clipConnectedWebsocketSubscribe(clipId.getLayer(), clipId.getColumn());
+						// Only subscribe to /connect when there are active feedback subscriptions for that clip
+						if (this.clipConnectedSubscriptions.has(clipId.getIdString())) {
+							this.clipConnectedWebsocketSubscribe(clipId.getLayer(), clipId.getColumn());
+						}
 						this.clipTransportPositionWebsocketSubscribe(clipObject.transport?.position?.id);
 					}
 				}
 			}
 		}
-		this.resolumeArenaInstance.checkFeedbacks('connectedClip');
+		this.resolumeArenaInstance.markFeedbackDirty('connectedClip');
 	}
 
 	initSelectedFromComposition() {
@@ -109,14 +130,47 @@ export class ClipUtils implements MessageSubscriber {
 				if (clips) {
 					for (const [clip, _clipObject] of clips.entries()) {
 						const clipId = new ClipId(layer + 1, clip + 1);
-						this.clipSelectedWebsocketUnsubscribe(clipId.getLayer(), clipId.getColumn());
-
-						this.clipSelectedWebsocketSubscribe(clipId.getLayer(), clipId.getColumn());
+						const idString = clipId.getIdString();
+						// Only (un)subscribe for clips that have active feedback subscriptions
+						if (this.clipSelectedSubscriptions.has(idString)) {
+							this.clipSelectedWebsocketSubscribe(clipId.getLayer(), clipId.getColumn());
+						} else {
+							this.clipSelectedWebsocketUnsubscribe(clipId.getLayer(), clipId.getColumn());
+						}
 					}
 				}
 			}
 		}
-		this.resolumeArenaInstance.checkFeedbacks('selectedClip');
+		this.resolumeArenaInstance.markFeedbackDirty('selectedClip');
+	}
+
+	async clipSelectedFeedbackSubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const layer = +await context.parseVariablesInString(feedback.options.layer as string);
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (ClipId.isValid(layer, column)) {
+			const idString = new ClipId(layer, column).getIdString();
+			if (!this.clipSelectedSubscriptions.get(idString)) {
+				this.clipSelectedSubscriptions.set(idString, new Set());
+				this.clipSelectedWebsocketSubscribe(layer, column);
+			}
+			this.clipSelectedSubscriptions.get(idString)?.add(feedback.id);
+		}
+	}
+
+	async clipSelectedFeedbackUnsubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const layer = +await context.parseVariablesInString(feedback.options.layer as string);
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (ClipId.isValid(layer, column)) {
+			const idString = new ClipId(layer, column).getIdString();
+			const clipSelectedSubscription = this.clipSelectedSubscriptions.get(idString);
+			if (clipSelectedSubscription) {
+				clipSelectedSubscription.delete(feedback.id);
+				if (clipSelectedSubscription.size === 0) {
+					this.clipSelectedWebsocketUnsubscribe(layer, column);
+					this.clipSelectedSubscriptions.delete(idString);
+				}
+			}
+		}
 	}
 
 	async initDetailsFromComposition() {
@@ -180,7 +234,7 @@ export class ClipUtils implements MessageSubscriber {
 			let clipId = ClipId.fromId(clipIdString);
 			this.clipVolumeWebsocketFeedbackSubscribe(clipId.getLayer(), clipId.getColumn());
 		}
-		this.resolumeArenaInstance.checkFeedbacks('clipVolume');
+		this.resolumeArenaInstance.markFeedbackDirty('clipVolume');
 	}
 
 	updateLayerOpacities() {
@@ -191,7 +245,7 @@ export class ClipUtils implements MessageSubscriber {
 			let clipId = ClipId.fromId(clipIdString);
 			this.clipOpacityWebsocketSubscribe(clipId.getLayer(), clipId.getColumn());
 		}
-		this.resolumeArenaInstance.checkFeedbacks('clipOpacity');
+		this.resolumeArenaInstance.markFeedbackDirty('clipOpacity');
 	}
 
 	public getClipFromCompositionState(layer: number, column: number): Clip | undefined {
@@ -409,8 +463,17 @@ export class ClipUtils implements MessageSubscriber {
 		}
 	}
 
-	clipDetailsWebsocketSubscribe(layer: number, column: number) {
-		this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/layers/' + layer + '/clips/' + column + '/name');
+	async clipConnectedFeedbackSubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const layer = +await context.parseVariablesInString(feedback.options.layer as string);
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+		if (ClipId.isValid(layer, column)) {
+			const idString = new ClipId(layer, column).getIdString();
+			if (!this.clipConnectedSubscriptions.get(idString)) {
+				this.clipConnectedSubscriptions.set(idString, new Set());
+				this.clipConnectedWebsocketSubscribe(layer, column);
+			}
+			this.clipConnectedSubscriptions.get(idString)?.add(feedback.id);
+		}
 	}
 
 	async clipDetailsFeedbackUnsubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
@@ -427,8 +490,29 @@ export class ClipUtils implements MessageSubscriber {
 		}
 	}
 
+	clipDetailsWebsocketSubscribe(layer: number, column: number) {
+		this.resolumeArenaInstance.getWebsocketApi()?.subscribePath('/composition/layers/' + layer + '/clips/' + column + '/name');
+	}
+
 	clipDetailsWebsocketUnsubscribe(layer: number, column: number) {
 		this.resolumeArenaInstance.getWebsocketApi()?.unsubscribePath('/composition/layers/' + layer + '/clips/' + column + '/name');
+	}
+
+	async clipConnectedFeedbackUnsubscribe(feedback: CompanionFeedbackInfo, context: CompanionCommonCallbackContext) {
+		const layer = +await context.parseVariablesInString(feedback.options.layer as string);
+		const column = +await context.parseVariablesInString(feedback.options.column as string);
+
+		if (ClipId.isValid(layer, column)) {
+			const idString = new ClipId(layer, column).getIdString();
+			const clipConnectedSubscription = this.clipConnectedSubscriptions.get(idString);
+			if (clipConnectedSubscription) {
+				clipConnectedSubscription.delete(feedback.id);
+				if (clipConnectedSubscription.size === 0) {
+					this.clipConnectedWebsocketUnsubscribe(layer, column);
+					this.clipConnectedSubscriptions.delete(idString);
+				}
+			}
+		}
 	}
 
 	/////////////////////////////////////////////////
