@@ -7,6 +7,8 @@ export function deckName(resolumeArenaInstance: ResolumeArenaModuleInstance): Co
 		type: 'advanced',
 		name: 'Deck Name',
 		options: [...getDeckOption()],
-		callback: resolumeArenaInstance.getDeckUtils()!.deckNameFeedbackCallback.bind(resolumeArenaInstance.getDeckUtils()!)
+		callback: resolumeArenaInstance.getDeckUtils()!.deckNameFeedbackCallback.bind(resolumeArenaInstance.getDeckUtils()!),
+		subscribe: resolumeArenaInstance.getDeckUtils()!.deckNameFeedbackSubscribe.bind(resolumeArenaInstance.getDeckUtils()!),
+		unsubscribe: resolumeArenaInstance.getDeckUtils()!.deckNameFeedbackUnsubscribe.bind(resolumeArenaInstance.getDeckUtils()!)
 	};
 }

@@ -8,6 +8,8 @@ export function deckSelected(resolumeArenaInstance: ResolumeArenaModuleInstance)
 		name: 'Deck Selected',
 		defaultStyle: getDefaultStyleGreen(),
 		options: [...getDeckOption()],
-		callback: resolumeArenaInstance.getDeckUtils()!.deckSelectedFeedbackCallback.bind(resolumeArenaInstance.getDeckUtils()!)
+		callback: resolumeArenaInstance.getDeckUtils()!.deckSelectedFeedbackCallback.bind(resolumeArenaInstance.getDeckUtils()!),
+		subscribe: resolumeArenaInstance.getDeckUtils()!.deckSelectedFeedbackSubscribe.bind(resolumeArenaInstance.getDeckUtils()!),
+		unsubscribe: resolumeArenaInstance.getDeckUtils()!.deckSelectedFeedbackUnsubscribe.bind(resolumeArenaInstance.getDeckUtils()!)
 	};
 }
